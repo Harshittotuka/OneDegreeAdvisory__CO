@@ -257,7 +257,10 @@ ready(() => {
 
   const sections = navLinks
     .map((link) => {
-      const target = document.querySelector(link.getAttribute("href"));
+      const href = link.getAttribute("href") || "";
+      if (!href.startsWith("#") || href.length < 2) return null;
+      let target = null;
+      try { target = document.querySelector(href); } catch (_) { return null; }
       return target ? { link, target } : null;
     })
     .filter(Boolean);
@@ -658,7 +661,7 @@ ready(() => {
     field.appendChild(chevron);
     panel.appendChild(list);
     wrap.appendChild(field);
-    document.body.appendChild(panel);
+    wrap.appendChild(panel);
     host.appendChild(wrap);
 
     const state = {
@@ -734,24 +737,31 @@ ready(() => {
       const gap = 6;
       const maxAllowedWidth = Math.max(180, window.innerWidth - pad * 2);
 
+      const desiredWidth = parentField ? rect.width : Math.min(420, maxAllowedWidth);
       panel.style.minWidth = rect.width + "px";
       panel.style.width = parentField ? rect.width + "px" : "max-content";
       panel.style.maxWidth = Math.min(parentField ? rect.width : 420, maxAllowedWidth) + "px";
-      panel.style.maxHeight = "320px";
-      panel.style.left = Math.max(pad, Math.min(rect.left, window.innerWidth - rect.width - pad)) + "px";
-      panel.style.top = rect.bottom + gap + "px";
 
-      const panelRect = panel.getBoundingClientRect();
-      let top = rect.bottom + gap;
-      let maxHeight = Math.min(320, Math.max(160, window.innerHeight - top - pad));
-      if (window.innerHeight - top < 180 && rect.top > window.innerHeight - rect.bottom) {
-        maxHeight = Math.min(320, Math.max(160, rect.top - pad - gap));
-        top = rect.top - gap - maxHeight;
+      const spaceBelow = window.innerHeight - rect.bottom - pad;
+      const spaceAbove = rect.top - pad;
+      const openUp = spaceBelow < 180 && spaceAbove > spaceBelow;
+
+      let maxHeight;
+      if (openUp) {
+        maxHeight = Math.min(320, Math.max(160, spaceAbove - gap));
+        panel.style.top = Math.max(pad, rect.top - gap - maxHeight) + "px";
+      } else {
+        maxHeight = Math.min(320, Math.max(160, spaceBelow - gap));
+        panel.style.top = rect.bottom + gap + "px";
       }
+      panel.style.bottom = "auto";
 
-      const left = Math.max(pad, Math.min(rect.left, window.innerWidth - panelRect.width - pad));
+      let left = rect.left;
+      if (left + desiredWidth > window.innerWidth - pad) {
+        left = Math.max(pad, window.innerWidth - pad - desiredWidth);
+      }
       panel.style.left = left + "px";
-      panel.style.top = Math.max(pad, top) + "px";
+      panel.style.right = "auto";
       panel.style.maxHeight = maxHeight + "px";
     };
 
@@ -761,6 +771,7 @@ ready(() => {
       if (state.disabled) return;
       if (wrap.classList.contains("is-open")) return;
       wrap.classList.add("is-open");
+      if (panel.parentElement !== document.body) document.body.appendChild(panel);
       panel.classList.add("is-open");
       field.setAttribute("aria-expanded", "true");
       searchInput.tabIndex = 0;
@@ -789,6 +800,7 @@ ready(() => {
       const parentField = findParentField();
       if (parentField) parentField.classList.remove("is-focused");
       renderField();
+      if (panel.parentElement === document.body) wrap.appendChild(panel);
     };
 
     const syncDisabled = () => {
@@ -891,54 +903,58 @@ ready(() => {
   };
 
   // ---------- Phone country combobox ----------
-  const countryHost = document.querySelector("[data-country-select]");
-  const phoneInput = document.querySelector("[data-phone-input]");
-  const phoneCountryInput = document.querySelector("[data-phone-country-input]");
+  const countryHosts = Array.from(document.querySelectorAll("[data-country-select]"));
 
-  let countryCbx = null;
-
-  if (countryHost) {
+  if (countryHosts.length) {
     const fmtItem = (it) => `<img class="cbx-flag" src="${flagUrl(it.value)}" srcset="${flagUrl2x(it.value)} 2x" width="22" height="16" alt="" loading="lazy"><span class="cbx-name">${it.name}</span><span class="cbx-dial">${it.dial}</span>`;
     const fmtSelected = (it) => `<img class="cbx-flag" src="${flagUrl(it.value)}" srcset="${flagUrl2x(it.value)} 2x" width="22" height="16" alt=""><span class="cbx-dial">${it.dial}</span>`;
 
-    const applyCountry = (it) => {
-      if (!it) return;
-      if (phoneCountryInput) phoneCountryInput.value = it.dial;
-      if (phoneInput) {
-        phoneInput.maxLength = it.length;
-        phoneInput.pattern = `\\d{${it.length}}`;
-        phoneInput.setAttribute("aria-label", `Phone number (${it.length} digits)`);
-        if (phoneInput.value.length > it.length) phoneInput.value = phoneInput.value.slice(0, it.length);
-      }
-    };
-
     const items = buildCountryItems(COUNTRIES_FALLBACK);
-    countryCbx = createCombobox({
-      host: countryHost,
-      items,
-      value: "IN",
-      placeholder: "+code",
-      searchPlaceholder: "Search country or code",
-      onChange: applyCountry,
-      formatItem: fmtItem,
-      formatSelected: fmtSelected,
-      emptyText: "No country found"
+    const countryComboboxes = countryHosts.map((countryHost) => {
+      const scope = countryHost.closest("[data-phone-group]") || countryHost.closest(".hc-phone") || countryHost.parentElement;
+      const phoneInput = scope ? scope.querySelector("[data-phone-input]") : null;
+      const phoneCountryInput = scope ? scope.querySelector("[data-phone-country-input]") : null;
+
+      const applyCountry = (it) => {
+        if (!it) return;
+        if (phoneCountryInput) phoneCountryInput.value = it.dial;
+        if (phoneInput) {
+          phoneInput.maxLength = it.length;
+          phoneInput.pattern = `\\d{${it.length}}`;
+          phoneInput.setAttribute("aria-label", `Phone number (${it.length} digits)`);
+          if (phoneInput.value.length > it.length) phoneInput.value = phoneInput.value.slice(0, it.length);
+        }
+      };
+
+      const countryCbx = createCombobox({
+        host: countryHost,
+        items,
+        value: "IN",
+        placeholder: "+code",
+        searchPlaceholder: "Search country or code",
+        onChange: applyCountry,
+        formatItem: fmtItem,
+        formatSelected: fmtSelected,
+        emptyText: "No country found"
+      });
+      applyCountry(items.find((c) => c.value === "IN"));
+
+      if (phoneInput) {
+        phoneInput.addEventListener("input", () => {
+          const digitsOnly = phoneInput.value.replace(/\D+/g, "");
+          const len = countryCbx.getItem() ? countryCbx.getItem().length : 10;
+          phoneInput.value = digitsOnly.slice(0, len);
+        });
+      }
+
+      return countryCbx;
     });
-    applyCountry(items.find((c) => c.value === "IN"));
 
     fetchCountriesFromApi().then((rows) => {
       if (!rows || rows.length < 50) return;
       const merged = buildCountryItems(rows);
-      countryCbx.setItems(merged);
+      countryComboboxes.forEach((countryCbx) => countryCbx.setItems(merged));
     });
-
-    if (phoneInput) {
-      phoneInput.addEventListener("input", () => {
-        const digitsOnly = phoneInput.value.replace(/\D+/g, "");
-        const len = countryCbx.getItem() ? countryCbx.getItem().length : 10;
-        phoneInput.value = digitsOnly.slice(0, len);
-      });
-    }
   }
 
   // ---------- State + city comboboxes ----------

@@ -868,10 +868,14 @@
               </label>
             </div>
             <div class="form-row">
-              <label>
-                <span>Phone</span>
-                <input name="phone" type="tel" autocomplete="tel" placeholder="+91">
-              </label>
+              <div class="contact-phone" data-phone-group>
+                <span class="contact-phone-label">Phone</span>
+                <div class="contact-phone-fields">
+                  <div class="contact-phone-country" data-country-select></div>
+                  <input type="hidden" name="phoneCountry" data-phone-country-input value="+91">
+                  <input name="phone" type="tel" data-phone-input autocomplete="tel" inputmode="numeric" placeholder="Phone number" maxlength="10" aria-label="Phone number (10 digits)">
+                </div>
+              </div>
               <label>
                 <span>Current stage</span>
                 <select name="stage" required>
